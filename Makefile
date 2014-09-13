@@ -1,13 +1,12 @@
 DESTDIR= 
-PREFIX?=	/usr/local/
+PREFIX?=	/usr/local
+MANPREFIX?=	${PREFIX}
 CC?=	gcc
-CFLAGS?= -Wall
+CFLAGS?= -Wall -pedantic -std=c99 -O2
 LDFLAGS?=
 INSTALL = install
 
-#.if ${CC} == "clang"
-#CFLAGS+=	-Wno-format -Wno-tautological-compare
-#.endif
+MAN=	ciso-maker.1
 
 all : clean ciso-maker
 ciso-maker : ciso.o
@@ -18,6 +17,7 @@ ciso.o : ciso.c
 
 install :
 	$(INSTALL) -m 755 ciso-maker $(DESTDIR)${PREFIX}/bin/ciso-maker
+	$(INSTALL) -m 644 ${MAN} ${DESTDIR}${MANPREFIX}/man/man1
 
 clean:
 	rm -rf *.o ciso-maker

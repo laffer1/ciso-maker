@@ -22,12 +22,18 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <limits.h>
-#include <zlib.h>               /* /usr(/local)/include/zlib.h */
+#include <unistd.h>
+
+#include <zlib.h>
 #include <zconf.h>
 
 #include "ciso.h"
+
+static void usage();
+unsigned long long check_file_size(FILE *);
 
 const char *fname_in,*fname_out;
 FILE *fin,*fout;
@@ -46,7 +52,8 @@ CISO_H ciso;
 int ciso_total_block;
 
 /* returns ULLONG_MAX on error */
-unsigned long long check_file_size(FILE *fp)
+unsigned long long
+check_file_size(FILE *fp)
 {
 	unsigned long long pos;
 
@@ -66,10 +73,6 @@ unsigned long long check_file_size(FILE *fp)
 
 	ciso.block_size  = 0x800; /* ISO9660 one of sector */
 	ciso.total_bytes = pos;
-#if 0
-	/* align >0 has bug */
-	for(ciso.align = 0 ; (ciso.total_bytes >> ciso.align) >0x80000000LL ; ciso.align++);
-#endif
 
 	ciso_total_block = pos / ciso.block_size ;
 
@@ -392,56 +395,85 @@ int comp_ciso(int level)
 	return 0;
 }
 
-/****************************************************************************
-	main
-****************************************************************************/
-int main(int argc, char *argv[])
+static void
+usage()
 {
-	int level;
+	fprintf(stderr, "usage: ciso-maker [-c] [-x] -l level infile outfile\n");
+	fprintf(stderr, "-c compresses\n");
+	fprintf(stderr, "-x extracts e.g level 0\n");
+	fprintf(stderr, "  level: 1-9 compress ISO to CSO (1=fast/large - 9=small/slow\n");
+	fprintf(stderr, "         0   decompress CSO to ISO\n");
+	exit(0);
+}
+
+int
+main(int argc, char *argv[])
+{
+	int level = 1;
 	int result;
+	int ch;
+	bool cFlag = false;
+	bool xFlag = false;
 
 	fprintf(stderr, "Compressed ISO9660 converter Ver.1.02 by BOOSTER, froom, and Lucas Holt\n");
 
-	if (argc != 4)
+	while ((ch = getopt(argc, argv, "cxl:")) != -1)
 	{
-		printf("Usage: ciso level infile outfile\n");
-		printf("  level: 1-9 compress ISO to CSO (1=fast/large - 9=small/slow\n");
-		printf("         0   decompress CSO to ISO\n");
-		return 0;
+		switch(ch) {
+			case 'c':
+				cFlag = true;
+				break;
+			case 'x': 
+				xFlag = true;
+				break;
+			case 'l':
+				level = atoi(optarg);
+				break;
+			case '?':
+			default:
+				usage();
+		}
 	}
-	level = argv[1][0] - '0';
-	if(level < 0 || level > 9)
+	argc -= optind;
+	argv += optind;
+
+	if (argc != 2)
 	{
-        printf("Unknown mode: %c\n", argv[1][0]);
+		usage();
+	}
+
+	if (level < 0 || level > 9)
+	{
+		printf("Unknown mode: %c\n", level);
+		usage();
 		return 1;
 	}
 
-	fname_in = argv[2];
-	fname_out = argv[3];
+	fname_in = argv[0];
+	fname_out = argv[1];
 
 	if ((fin = fopen(fname_in, "rb")) == NULL)
 	{
 		printf("Can't open %s\n", fname_in);
 		return 1;
 	}
+
 	if ((fout = fopen(fname_out, "wb")) == NULL)
 	{
 		printf("Can't create %s\n", fname_out);
 		return 1;
 	}
 
-	if(level==0)
+	if (xFlag || level==0)
 		result = decomp_ciso();
 	else
 		result = comp_ciso(level);
 
-	/* free memory */
 	if(index_buf) free(index_buf);
 	if(crc_buf) free(crc_buf);
 	if(block_buf1) free(block_buf1);
 	if(block_buf2) free(block_buf2);
 
-	/* close files */
 	fclose(fin);
 	fclose(fout);
 	return result;

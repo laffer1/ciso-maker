@@ -1,0 +1,34 @@
+.\" Copyright (c) 2014 Lucas Holt
+.\" All rights reserved.
+.\"
+.Dd September 13, 2014
+.Dt CISO-MAKER 1
+.Os
+.Sh NAME
+.Nm ciso-maker
+.Nd "ISO to CSO file converter"
+.Sh SYNOPSIS
+.Nm
+.Op Fl cxl
+.Sh DESCRIPTION
+The
+.Nm
+command converts between ISO and compressed ISO (CSO) files.
+.Pp
+The following options are available:
+.Bl -tag -width indent
+.It Fl c
+Compresses ISO file using level 1
+.It Fl l
+Specify the compression level from 1 to 9 with 9 being smallest
+.It Fl x
+Extract the compressed ISO into a regular ISO
+.Sh HISTORY
+The
+.Nm
+command was written by BOOSTER in 2005, saved by froom
+in SF and forked for maintenance patches in 2014 by
+Lucas Holt.
+.Sh AUTHORS
+This manual page was written by 
+.An Lucas Holt Aq luke@foolishgames.com.
