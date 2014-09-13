@@ -437,7 +437,19 @@ main(int argc, char *argv[])
 	argc -= optind;
 	argv += optind;
 
-	if (argc != 2)
+	/* backward compatibility */
+	if (argc == 3)
+	{
+		level = atoi(argv[0]);
+		fname_in = argv[1];
+		fname_out = argv[2];
+	}
+	else if (argc == 2)
+	{
+	        fname_in = argv[0];
+		fname_out = argv[1];
+	}
+	else
 	{
 		usage();
 	}
@@ -448,9 +460,6 @@ main(int argc, char *argv[])
 		usage();
 		return 1;
 	}
-
-	fname_in = argv[0];
-	fname_out = argv[1];
 
 	if ((fin = fopen(fname_in, "rb")) == NULL)
 	{
