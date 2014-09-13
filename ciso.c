@@ -83,13 +83,10 @@ unsigned long long check_file_size(FILE *fp)
 ****************************************************************************/
 int decomp_ciso(void)
 {
-	unsigned long long file_size;
 	unsigned int index , index2;
 	unsigned long long read_pos , read_size;
-	int total_sectors;
 	int index_size;
 	int block;
-	unsigned char buf4[4];
 	int cmp_size;
 	int status;
 	int percent_period;
@@ -242,7 +239,6 @@ int comp_ciso(int level)
 {
 	unsigned long long file_size;
 	unsigned long long write_pos;
-	int total_sectors;
 	int index_size;
 	int block;
 	unsigned char buf4[64];

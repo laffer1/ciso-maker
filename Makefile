@@ -1,19 +1,20 @@
 DESTDIR= 
-PREFIX=	/usr/local/
-CC=	gcc
-
+PREFIX?=	/usr/local/
+CC?=	gcc
+CFLAGS?= -Wall
+LDFLAGS?=
 INSTALL = install
 
 #.if ${CC} == "clang"
 #CFLAGS+=	-Wno-format -Wno-tautological-compare
 #.endif
 
-all : ciso-maker
+all : clean ciso-maker
 ciso-maker : ciso.o
-	${CC} -o ciso-maker ciso.o -lz
+	${CC} ${CFLAGS} ${LDFLAGS} -o ciso-maker ciso.o -lz
 
 ciso.o : ciso.c
-	${CC} -o ciso.o -c ciso.c
+	${CC} ${CFLAGS} -o ciso.o -c ciso.c
 
 install :
 	$(INSTALL) -m 755 ciso-maker $(DESTDIR)${PREFIX}/bin/ciso-maker
