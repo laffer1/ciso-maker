@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 #include <zlib.h>               /* /usr(/local)/include/zlib.h */
 #include <zconf.h>
 
@@ -44,14 +45,15 @@ unsigned char *block_buf2 = NULL;
 CISO_H ciso;
 int ciso_total_block;
 
+/* returns ULLONG_MAX on error */
 unsigned long long check_file_size(FILE *fp)
 {
 	unsigned long long pos;
 
-	if( fseek(fp,0,SEEK_END) < 0)
-		return -1;
+	if (fseek(fp,0,SEEK_END) < 0)
+		return ULLONG_MAX;
 	pos = ftell(fp);
-	if(pos==-1) return pos;
+	if(pos==-1) return ULLONG_MAX;
 
 	/* init ciso header */
 	memset(&ciso,0,sizeof(ciso));
@@ -251,7 +253,7 @@ int comp_ciso(int level)
 	int align,align_b,align_m;
 
 	file_size = check_file_size(fin);
-	if(file_size<0)
+	if (file_size == ULLONG_MAX)
 	{
 		printf("Can't get file size\n");
 		return 1;
@@ -305,7 +307,7 @@ int comp_ciso(int level)
 		if(--percent_cnt<=0)
 		{
 			percent_cnt = percent_period;
-			printf("compress %3d%% avarage rate %3d%%\r"
+			printf("compress %3d%% avarage rate %3llu%%\r"
 				,block / percent_period
 				,block==0 ? 0 : 100*write_pos/(block*0x800));
 		}
