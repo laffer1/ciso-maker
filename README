@@ -1,0 +1,8 @@
+ciso-maker is a fork of the Ciso program developed by Booster and
+later maintained by froom on SourceForge. 
+
+As froom stopped maintaining the package, I've decided to apply many of the common
+patches floating around to the tool and keep it going.
+
+Current Site: http://github.com/laffer1/ciso-maker
+Current Maintainer: Lucas Holt <luke@foolishgames.com>

@@ -1,20 +1,22 @@
-DESTDIR     = 
-prefix      = /usr
-USRBINDIR   = $(DESTDIR)$(prefix)/bin
+DESTDIR= 
+PREFIX=	/usr/local/
+CC=	gcc
 
-CC = $(CROSS_COMPILE)gcc
-LD = $(CROSS_COMPILE)gcc
 INSTALL = install
 
-all : ciso
-ciso : ciso.o
-	gcc -o ciso ciso.o -lz
+#.if ${CC} == "clang"
+#CFLAGS+=	-Wno-format -Wno-tautological-compare
+#.endif
+
+all : ciso-maker
+ciso-maker : ciso.o
+	${CC} -o ciso-maker ciso.o -lz
 
 ciso.o : ciso.c
-	gcc -o ciso.o -c ciso.c
+	${CC} -o ciso.o -c ciso.c
 
 install :
-	$(INSTALL) -m 755 ciso $(USRBINDIR)/ciso
+	$(INSTALL) -m 755 ciso-maker $(DESTDIR)${PREFIX}/bin/ciso-maker
 
 clean:
-	rm -rf *.o
+	rm -rf *.o ciso-maker

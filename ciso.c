@@ -22,6 +22,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <zlib.h>               /* /usr(/local)/include/zlib.h */
 #include <zconf.h>
 
@@ -138,7 +139,7 @@ int decomp_ciso(void)
 
 	/* show info */
 	printf("Decompress '%s' to '%s'\n",fname_in,fname_out);
-	printf("Total File Size %ld bytes\n",ciso.total_bytes);
+	printf("Total File Size %llu bytes\n",ciso.total_bytes);
 	printf("block size      %d  bytes\n",ciso.block_size);
 	printf("total blocks    %d  blocks\n",ciso_total_block);
 	printf("index align     %d\n",1<<ciso.align);
@@ -279,7 +280,7 @@ int comp_ciso(int level)
 
 	/* show info */
 	printf("Compress '%s' to '%s'\n",fname_in,fname_out);
-	printf("Total File Size %ld bytes\n",ciso.total_bytes);
+	printf("Total File Size %llu bytes\n",ciso.total_bytes);
 	printf("block size      %d  bytes\n",ciso.block_size);
 	printf("index align     %d\n",1<<ciso.align);
 	printf("compress level  %d\n",level);
