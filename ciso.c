@@ -404,7 +404,7 @@ int main(int argc, char *argv[])
 	int level;
 	int result;
 
-	fprintf(stderr, "Compressed ISO9660 converter Ver.1.01 by BOOSTER\n");
+	fprintf(stderr, "Compressed ISO9660 converter Ver.1.02 by BOOSTER, froom, and Lucas Holt\n");
 
 	if (argc != 4)
 	{
