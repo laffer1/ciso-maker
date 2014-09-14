@@ -33,12 +33,10 @@
 #include "ciso.h"
 
 static unsigned long long check_file_size(FILE *);
-static int compress_iso_to_cso(int);
-static int decompress_cso_to_iso();
+static int compress_iso_to_cso(FILE *, FILE *, int);
+static int decompress_cso_to_iso(FILE *, FILE *);
 static void usage();
 
-const char *fname_in,*fname_out;
-FILE *fin,*fout;
 z_stream z;
 
 unsigned int *index_buf = NULL;
@@ -58,10 +56,11 @@ check_file_size(FILE *fp)
 	if (fseek(fp,0,SEEK_END) < 0)
 		return ULLONG_MAX;
 	pos = ftell(fp);
-	if(pos==-1) return ULLONG_MAX;
+	if (pos == -1)
+		return ULLONG_MAX;
 
 	/* init ciso header */
-	memset(&ciso,0,sizeof(ciso));
+	memset(&ciso, 0, sizeof(ciso));
 
 	ciso.magic[0] = 'C';
 	ciso.magic[1] = 'I';
@@ -74,14 +73,14 @@ check_file_size(FILE *fp)
 
 	ciso_total_block = pos / ciso.block_size ;
 
-	fseek(fp,0,SEEK_SET);
+	fseek(fp, 0, SEEK_SET);
 
 	return pos;
 }
 
 
 static int
-decompress_cso_to_iso(void)
+decompress_cso_to_iso(FILE *fin, FILE *fout)
 {
 	unsigned int index, index2;
 	unsigned long long read_pos, read_size;
@@ -117,31 +116,29 @@ decompress_cso_to_iso(void)
 	ciso_total_block = ciso.total_bytes / ciso.block_size;
 
 	/* allocate index block */
-	index_size = (ciso_total_block + 1 ) * sizeof(unsigned long);
-	index_buf  = malloc(index_size);
-	block_buf1 = malloc(ciso.block_size);
-	block_buf2 = malloc(ciso.block_size*2);
+	index_size = (ciso_total_block + 1) * sizeof(unsigned long);
+	index_buf  = calloc(1, index_size);
+	block_buf1 = calloc(1, ciso.block_size);
+	block_buf2 = calloc(2, ciso.block_size);
 
 	if (!index_buf || !block_buf1 || !block_buf2)
 	{
 		fprintf(stderr, "Can't allocate memory\n");
-		return 1;
+		return (1);
 	}
-	memset(index_buf, 0, index_size);
 
 	/* read index block */
 	if (fread(index_buf, 1, index_size, fin) != index_size)
 	{
 		fprintf(stderr, "file read error\n");
-		return 1;
+		return (1);
 	}
 
 	/* show info */
-	printf("Decompress '%s' to '%s'\n",fname_in,fname_out);
-	printf("Total File Size %llu bytes\n",ciso.total_bytes);
-	printf("block size      %d  bytes\n",ciso.block_size);
-	printf("total blocks    %d  blocks\n",ciso_total_block);
-	printf("index align     %d\n",1<<ciso.align);
+	printf("Total File Size %llu bytes\n", ciso.total_bytes);
+	printf("block size      %d  bytes\n", ciso.block_size);
+	printf("total blocks    %d  blocks\n", ciso_total_block);
+	printf("index align     %d\n", 1 << ciso.align);
 
 	/* init zlib */
 	z.zalloc = Z_NULL;
@@ -162,8 +159,8 @@ decompress_cso_to_iso(void)
 
 		if (inflateInit2(&z,-15) != Z_OK)
 		{
-			printf("deflateInit : %s\n", (z.msg) ? z.msg : "???");
-			return 1;
+			fprintf(stderr, "deflateInit : %s\n", (z.msg) ? z.msg : "???");
+			return (1);
 		}
 
 		/* check index */
@@ -185,8 +182,8 @@ decompress_cso_to_iso(void)
 		z.avail_in  = fread(block_buf2, 1, read_size , fin);
 		if (z.avail_in != read_size)
 		{
-			printf("block=%d : read error\n", block);
-			return 1;
+			fprintf(stderr, "block=%d : read error\n", block);
+			return (1);
 		}
 
 		if (plain)
@@ -203,31 +200,31 @@ decompress_cso_to_iso(void)
 			
 			if (status != Z_STREAM_END)
 			{
-				printf("block %d:inflate : %s[%d]\n", block,(z.msg) ? z.msg : "error",status);
-				return 1;
+				fprintf(stderr, "block %d:inflate : %s[%d]\n", block,(z.msg) ? z.msg : "error",status);
+				return (1);
 			}
 			
 			cmp_size = ciso.block_size - z.avail_out;
 			
 			if (cmp_size != ciso.block_size)
 			{
-				printf("block %d : block size error %d != %d\n",block,cmp_size , ciso.block_size);
-				return 1;
+				fprintf(stderr, "block %d : block size error %d != %d\n",block,cmp_size , ciso.block_size);
+				return (1);
 			}
 		}
 		
 		/* write decompressed block */
 		if (fwrite(block_buf1, 1,cmp_size , fout) != cmp_size)
 		{
-			printf("block %d : Write error\n",block);
-			return 1;
+			fprintf(stderr, "block %d : Write error\n",block);
+			return (1);
 		}
 
 		/* term zlib */
 		if (inflateEnd(&z) != Z_OK)
 		{
-			printf("inflateEnd : %s\n", (z.msg) ? z.msg : "error");
-			return 1;
+			fprintf(stderr, "inflateEnd : %s\n", (z.msg) ? z.msg : "error");
+			return (1);
 		}
 	}
 
@@ -238,7 +235,7 @@ decompress_cso_to_iso(void)
 
 
 static int
-compress_iso_to_cso(int level)
+compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 {
 	unsigned long long file_size;
 	unsigned long long write_pos;
@@ -254,24 +251,22 @@ compress_iso_to_cso(int level)
 	file_size = check_file_size(fin);
 	if (file_size == ULLONG_MAX)
 	{
-		printf("Can't get file size\n");
+		fprintf(stderr, "Can't get file size or size too large\n");
 		return (1);
 	}
 
 	/* allocate index block */
 	index_size = (ciso_total_block + 1) * sizeof(unsigned long);
-	index_buf  = malloc(index_size);
-	crc_buf    = malloc(index_size);
-	block_buf1 = malloc(ciso.block_size);
-	block_buf2 = malloc(ciso.block_size * 2);
+	index_buf  = calloc(1, index_size);
+	crc_buf    = calloc(1, index_size);
+	block_buf1 = calloc(1, ciso.block_size);
+	block_buf2 = calloc(2, ciso.block_size);
 
 	if (!index_buf || !crc_buf || !block_buf1 || !block_buf2)
 	{
-		printf("Can't allocate memory\n");
+		fprintf(stderr, "Can't allocate memory\n");
 		return (1);
 	}
-	memset(index_buf, 0, index_size);
-	memset(crc_buf, 0, index_size);
 	memset(buf4, 0, sizeof(buf4));
 
 	/* init zlib */
@@ -280,14 +275,13 @@ compress_iso_to_cso(int level)
 	z.opaque = Z_NULL;
 
 	/* show info */
-	printf("Compress '%s' to '%s'\n", fname_in, fname_out);
 	printf("Total File Size %llu bytes\n", ciso.total_bytes);
 	printf("block size      %d  bytes\n", ciso.block_size);
 	printf("index align     %d\n", 1 << ciso.align);
 	printf("compress level  %d\n", level);
 
 	/* write header block */
-	fwrite(&ciso,1,sizeof(ciso),fout);
+	fwrite(&ciso,1, sizeof(ciso), fout);
 
 	/* dummy write index block */
 	fwrite(index_buf, 1, index_size, fout);
@@ -307,11 +301,11 @@ compress_iso_to_cso(int level)
 		{
 			percent_cnt = percent_period;
 			printf("compress %3d%% avarage rate %3llu%%\r"
-				,block / percent_period
-				,block==0 ? 0 : 100*write_pos/(block*0x800));
+				, block / percent_period
+				, block==0 ? 0 : 100 * write_pos / (block * 0x800));
 		}
 
-		if (deflateInit2(&z, level , Z_DEFLATED, -15,8,Z_DEFAULT_STRATEGY) != Z_OK)
+		if (deflateInit2(&z, level, Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY) != Z_OK)
 		{
 			printf("deflateInit : %s\n", (z.msg) ? z.msg : "???");
 			return 1;
@@ -389,7 +383,7 @@ compress_iso_to_cso(int level)
 	fwrite(index_buf, 1, index_size, fout);
 
 	printf("ciso compress completed , total size = %8d bytes, rate %d%%\n"
-		,(int)write_pos,(int)(write_pos * 100 / ciso.total_bytes));
+		, (int)write_pos, (int)(write_pos * 100 / ciso.total_bytes));
 	
 	return (0);
 }
@@ -413,6 +407,8 @@ main(int argc, char *argv[])
 	int ch;
 	bool cFlag = false;
 	bool xFlag = false;
+	FILE *fin, *fout;
+	const char *fname_in, *fname_out;
 
 	fprintf(stderr, "Compressed ISO9660 converter Ver.1.03 by BOOSTER, froom, and Lucas Holt\n");
 
@@ -445,7 +441,7 @@ main(int argc, char *argv[])
 	}
 	else if (argc == 2)
 	{
-	        fname_in = argv[0];
+		fname_in = argv[0];
 		fname_out = argv[1];
 	}
 	else
@@ -455,36 +451,38 @@ main(int argc, char *argv[])
 
 	if (level < 0 || level > 9)
 	{
-		printf("Unknown mode: %c\n", level);
+		fprintf(stderr, "Unknown mode: %c\n", level);
 		usage();
 		return 1;
 	}
 
 	if ((fin = fopen(fname_in, "rb")) == NULL)
 	{
-		printf("Can't open %s\n", fname_in);
+		fprintf(stderr, "Can't open %s\n", fname_in);
 		return 1;
 	}
 
 	if ((fout = fopen(fname_out, "wb")) == NULL)
 	{
-		printf("Can't create %s\n", fname_out);
+		fprintf(stderr, "Can't create %s\n", fname_out);
 		return 1;
 	}
 
 	if (xFlag || level == 0)
-		result = decompress_cso_to_iso();
+	{
+		printf("Decompress '%s' to '%s'\n", fname_in,fname_out);
+		result = decompress_cso_to_iso(fin, fout);
+	}
 	else
-		result = compress_iso_to_cso(level);
+	{
+		printf("Compress '%s' to '%s'\n", fname_in, fname_out);
+		result = compress_iso_to_cso(fin, fout, level);
+	}
 
-	if (index_buf)
-		free(index_buf);
-	if (crc_buf)
-		free(crc_buf);
-	if (block_buf1)
-		free(block_buf1);
-	if (block_buf2)
-		free(block_buf2);
+	free(index_buf);
+	free(crc_buf);
+	free(block_buf1);
+	free(block_buf2);
 
 	fclose(fin);
 	fclose(fout);
