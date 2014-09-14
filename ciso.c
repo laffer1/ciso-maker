@@ -415,7 +415,7 @@ main(int argc, char *argv[])
 	bool cFlag = false;
 	bool xFlag = false;
 
-	fprintf(stderr, "Compressed ISO9660 converter Ver.1.02 by BOOSTER, froom, and Lucas Holt\n");
+	fprintf(stderr, "Compressed ISO9660 converter Ver.1.03 by BOOSTER, froom, and Lucas Holt\n");
 
 	while ((ch = getopt(argc, argv, "cxl:")) != -1)
 	{
