@@ -32,8 +32,10 @@
 
 #include "ciso.h"
 
+static unsigned long long check_file_size(FILE *);
+static int compress_iso_to_cso(int);
+static int decompress_cso_to_iso();
 static void usage();
-unsigned long long check_file_size(FILE *);
 
 const char *fname_in,*fname_out;
 FILE *fin,*fout;
@@ -44,15 +46,11 @@ unsigned int *crc_buf = NULL;
 unsigned char *block_buf1 = NULL;
 unsigned char *block_buf2 = NULL;
 
-/****************************************************************************
-	compress ISO to CSO
-****************************************************************************/
-
 CISO_H ciso;
 int ciso_total_block;
 
 /* returns ULLONG_MAX on error */
-unsigned long long
+static unsigned long long
 check_file_size(FILE *fp)
 {
 	unsigned long long pos;
@@ -81,13 +79,12 @@ check_file_size(FILE *fp)
 	return pos;
 }
 
-/****************************************************************************
-	decompress CSO to ISO
-****************************************************************************/
-int decomp_ciso(void)
+
+static int
+decompress_cso_to_iso(void)
 {
-	unsigned int index , index2;
-	unsigned long long read_pos , read_size;
+	unsigned int index, index2;
+	unsigned long long read_pos, read_size;
 	int index_size;
 	int block;
 	int cmp_size;
@@ -97,14 +94,14 @@ int decomp_ciso(void)
 	int plain;
 
 	/* read header */
-	if( fread(&ciso, 1, sizeof(ciso), fin) != sizeof(ciso) )
+	if (fread(&ciso, 1, sizeof(ciso), fin) != sizeof(ciso))
 	{
-		printf("file read error\n");
+		fprintf(stderr, "file read error\n");
 		return 1;
 	}
 
 	/* check header */
-	if(
+	if (
 		ciso.magic[0] != 'C' ||
 		ciso.magic[1] != 'I' ||
 		ciso.magic[2] != 'S' ||
@@ -113,7 +110,7 @@ int decomp_ciso(void)
 		ciso.total_bytes == 0
 	)
 	{
-		printf("ciso file format error\n");
+		fprintf(stderr, "ciso file format error\n");
 		return 1;
 	}
 	 
@@ -125,17 +122,17 @@ int decomp_ciso(void)
 	block_buf1 = malloc(ciso.block_size);
 	block_buf2 = malloc(ciso.block_size*2);
 
-	if( !index_buf || !block_buf1 || !block_buf2 )
+	if (!index_buf || !block_buf1 || !block_buf2)
 	{
-		printf("Can't allocate memory\n");
+		fprintf(stderr, "Can't allocate memory\n");
 		return 1;
 	}
-	memset(index_buf,0,index_size);
+	memset(index_buf, 0, index_size);
 
 	/* read index block */
-	if( fread(index_buf, 1, index_size, fin) != index_size )
+	if (fread(index_buf, 1, index_size, fin) != index_size)
 	{
-		printf("file read error\n");
+		fprintf(stderr, "file read error\n");
 		return 1;
 	}
 
@@ -152,12 +149,12 @@ int decomp_ciso(void)
 	z.opaque = Z_NULL;
 
 	/* decompress data */
-	percent_period = ciso_total_block/100;
+	percent_period = ciso_total_block / 100;
 	percent_cnt = 0;
 
-	for(block = 0;block < ciso_total_block ; block++)
+	for (block = 0; block < ciso_total_block; block++)
 	{
-		if(--percent_cnt<=0)
+		if (--percent_cnt <= 0)
 		{
 			percent_cnt = percent_period;
 			printf("decompress %d%%\r",block / percent_period);
@@ -174,27 +171,27 @@ int decomp_ciso(void)
 		plain  = index & 0x80000000;
 		index  &= 0x7fffffff;
 		read_pos = index << (ciso.align);
-		if(plain)
+		if (plain)
 		{
 			read_size = ciso.block_size;
 		}
 		else
 		{
-			index2 = index_buf[block+1] & 0x7fffffff;
-			read_size = (index2-index) << (ciso.align);
+			index2 = index_buf[block + 1] & 0x7fffffff;
+			read_size = (index2 - index) << (ciso.align);
 		}
 		fseek(fin,read_pos,SEEK_SET);
 
 		z.avail_in  = fread(block_buf2, 1, read_size , fin);
-		if(z.avail_in != read_size)
+		if (z.avail_in != read_size)
 		{
-			printf("block=%d : read error\n",block);
+			printf("block=%d : read error\n", block);
 			return 1;
 		}
 
-		if(plain)
+		if (plain)
 		{
-			memcpy(block_buf1,block_buf2,read_size);
+			memcpy(block_buf1,block_buf2, read_size);
 			cmp_size = read_size;
 		}
 		else
@@ -203,21 +200,24 @@ int decomp_ciso(void)
 			z.avail_out = ciso.block_size;
 			z.next_in   = block_buf2;
 			status = inflate(&z, Z_FULL_FLUSH);
+			
 			if (status != Z_STREAM_END)
-			/*if (status != Z_OK)*/
 			{
 				printf("block %d:inflate : %s[%d]\n", block,(z.msg) ? z.msg : "error",status);
 				return 1;
 			}
+			
 			cmp_size = ciso.block_size - z.avail_out;
-			if(cmp_size != ciso.block_size)
+			
+			if (cmp_size != ciso.block_size)
 			{
 				printf("block %d : block size error %d != %d\n",block,cmp_size , ciso.block_size);
 				return 1;
 			}
 		}
+		
 		/* write decompressed block */
-		if(fwrite(block_buf1, 1,cmp_size , fout) != cmp_size)
+		if (fwrite(block_buf1, 1,cmp_size , fout) != cmp_size)
 		{
 			printf("block %d : Write error\n",block);
 			return 1;
@@ -232,13 +232,13 @@ int decomp_ciso(void)
 	}
 
 	printf("ciso decompress completed\n");
-	return 0;
+	
+	return (0);
 }
 
-/****************************************************************************
-	compress ISO
-****************************************************************************/
-int comp_ciso(int level)
+
+static int
+compress_iso_to_cso(int level)
 {
 	unsigned long long file_size;
 	unsigned long long write_pos;
@@ -255,24 +255,24 @@ int comp_ciso(int level)
 	if (file_size == ULLONG_MAX)
 	{
 		printf("Can't get file size\n");
-		return 1;
+		return (1);
 	}
 
 	/* allocate index block */
-	index_size = (ciso_total_block + 1 ) * sizeof(unsigned long);
+	index_size = (ciso_total_block + 1) * sizeof(unsigned long);
 	index_buf  = malloc(index_size);
 	crc_buf    = malloc(index_size);
 	block_buf1 = malloc(ciso.block_size);
-	block_buf2 = malloc(ciso.block_size*2);
+	block_buf2 = malloc(ciso.block_size * 2);
 
-	if( !index_buf || !crc_buf || !block_buf1 || !block_buf2 )
+	if (!index_buf || !crc_buf || !block_buf1 || !block_buf2)
 	{
 		printf("Can't allocate memory\n");
-		return 1;
+		return (1);
 	}
-	memset(index_buf,0,index_size);
-	memset(crc_buf,0,index_size);
-	memset(buf4,0,sizeof(buf4));
+	memset(index_buf, 0, index_size);
+	memset(crc_buf, 0, index_size);
+	memset(buf4, 0, sizeof(buf4));
 
 	/* init zlib */
 	z.zalloc = Z_NULL;
@@ -280,30 +280,30 @@ int comp_ciso(int level)
 	z.opaque = Z_NULL;
 
 	/* show info */
-	printf("Compress '%s' to '%s'\n",fname_in,fname_out);
-	printf("Total File Size %llu bytes\n",ciso.total_bytes);
-	printf("block size      %d  bytes\n",ciso.block_size);
-	printf("index align     %d\n",1<<ciso.align);
-	printf("compress level  %d\n",level);
+	printf("Compress '%s' to '%s'\n", fname_in, fname_out);
+	printf("Total File Size %llu bytes\n", ciso.total_bytes);
+	printf("block size      %d  bytes\n", ciso.block_size);
+	printf("index align     %d\n", 1 << ciso.align);
+	printf("compress level  %d\n", level);
 
 	/* write header block */
 	fwrite(&ciso,1,sizeof(ciso),fout);
 
 	/* dummy write index block */
-	fwrite(index_buf,1,index_size,fout);
+	fwrite(index_buf, 1, index_size, fout);
 
 	write_pos = sizeof(ciso) + index_size;
 
 	/* compress data */
-	percent_period = ciso_total_block/100;
-	percent_cnt    = ciso_total_block/100;
+	percent_period = ciso_total_block / 100;
+	percent_cnt    = ciso_total_block / 100;
 
-	align_b = 1<<(ciso.align);
-	align_m = align_b -1;
+	align_b = 1 << (ciso.align);
+	align_m = align_b - 1;
 
-	for(block = 0;block < ciso_total_block ; block++)
+	for (block = 0; block < ciso_total_block; block++)
 	{
-		if(--percent_cnt<=0)
+		if (--percent_cnt <= 0)
 		{
 			percent_cnt = percent_period;
 			printf("compress %3d%% avarage rate %3llu%%\r"
@@ -319,10 +319,10 @@ int comp_ciso(int level)
 
 		/* write align */
 		align = (int)write_pos & align_m;
-		if(align)
+		if (align)
 		{
 			align = align_b - align;
-			if(fwrite(buf4,1,align, fout) != align)
+			if (fwrite(buf4, 1, align, fout) != align)
 			{
 				printf("block %d : Write error\n",block);
 				return 1;
@@ -335,38 +335,36 @@ int comp_ciso(int level)
 
 		/* read buffer */
 		z.next_out  = block_buf2;
-		z.avail_out = ciso.block_size*2;
+		z.avail_out = ciso.block_size * 2;
 		z.next_in   = block_buf1;
 		z.avail_in  = fread(block_buf1, 1, ciso.block_size , fin);
-		if(z.avail_in != ciso.block_size)
+		
+		if (z.avail_in != ciso.block_size)
 		{
 			printf("block=%d : read error\n",block);
 			return 1;
 		}
 
-		/* compress block
-		status = deflate(&z, Z_FULL_FLUSH);*/
 		status = deflate(&z, Z_FINISH);
 		if (status != Z_STREAM_END)
-	/*	if (status != Z_OK) */
 		{
 			printf("block %d:deflate : %s[%d]\n", block,(z.msg) ? z.msg : "error",status);
 			return 1;
 		}
 
-		cmp_size = ciso.block_size*2 - z.avail_out;
+		cmp_size = ciso.block_size * 2 - z.avail_out;
 
 		/* choise plain / compress */
-		if(cmp_size >= ciso.block_size)
+		if (cmp_size >= ciso.block_size)
 		{
 			cmp_size = ciso.block_size;
-			memcpy(block_buf2,block_buf1,cmp_size);
+			memcpy(block_buf2, block_buf1, cmp_size);
 			/* plain block mark */
 			index_buf[block] |= 0x80000000;
 		}
 
 		/* write compressed block */
-		if(fwrite(block_buf2, 1,cmp_size , fout) != cmp_size)
+		if (fwrite(block_buf2, 1, cmp_size , fout) != cmp_size)
 		{
 			printf("block %d : Write error\n",block);
 			return 1;
@@ -387,12 +385,13 @@ int comp_ciso(int level)
 	index_buf[block] = write_pos>>(ciso.align);
 
 	/* write header & index block */
-	fseek(fout,sizeof(ciso),SEEK_SET);
-	fwrite(index_buf,1,index_size,fout);
+	fseek(fout, sizeof(ciso), SEEK_SET);
+	fwrite(index_buf, 1, index_size, fout);
 
-	printf("ciso compress completed , total size = %8d bytes , rate %d%%\n"
-		,(int)write_pos,(int)(write_pos*100/ciso.total_bytes));
-	return 0;
+	printf("ciso compress completed , total size = %8d bytes, rate %d%%\n"
+		,(int)write_pos,(int)(write_pos * 100 / ciso.total_bytes));
+	
+	return (0);
 }
 
 static void
@@ -473,17 +472,22 @@ main(int argc, char *argv[])
 		return 1;
 	}
 
-	if (xFlag || level==0)
-		result = decomp_ciso();
+	if (xFlag || level == 0)
+		result = decompress_cso_to_iso();
 	else
-		result = comp_ciso(level);
+		result = compress_iso_to_cso(level);
 
-	if(index_buf) free(index_buf);
-	if(crc_buf) free(crc_buf);
-	if(block_buf1) free(block_buf1);
-	if(block_buf2) free(block_buf2);
+	if (index_buf)
+		free(index_buf);
+	if (crc_buf)
+		free(crc_buf);
+	if (block_buf1)
+		free(block_buf1);
+	if (block_buf2)
+		free(block_buf2);
 
 	fclose(fin);
 	fclose(fout);
-	return result;
+	
+	return (result);
 }
