@@ -6,3 +6,11 @@ patches floating around to the tool and keep it going.
 
 Current Site: http://github.com/laffer1/ciso-maker
 Current Maintainer: Lucas Holt <luke@foolishgames.com>
+
+### Usage ###
+
+Extracting a file
+./ciso-maker  -x test.cso test.iso
+
+Compressing a file
+./ciso-maker  -c test.iso foo.cso
