@@ -19,6 +19,7 @@
     Copyright 2005 BOOSTER
 */
 
+#define _XOPEN_SOURCE
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,6 +27,8 @@
 #include <string.h>
 #include <limits.h>
 #include <unistd.h>
+
+#include <getopt.h>
 
 #include <zlib.h>
 #include <zconf.h>
