@@ -408,7 +408,6 @@ main(int argc, char *argv[])
 	int level = 1;
 	int result;
 	int ch;
-	bool cFlag = false;
 	bool xFlag = false;
 	FILE *fin, *fout;
 	const char *fname_in, *fname_out;
@@ -419,7 +418,6 @@ main(int argc, char *argv[])
 	{
 		switch(ch) {
 			case 'c':
-				cFlag = true;
 				break;
 			case 'x': 
 				xFlag = true;
