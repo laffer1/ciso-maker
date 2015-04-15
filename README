@@ -14,3 +14,10 @@ Extracting a file
 
 Compressing a file
 ./ciso-maker  -c test.iso foo.cso
+
+### OS Compatibility ###
+
+As of version 1.0.5, ciso-maker compiles on Linux with
+GCC 4.6 and clang 3.4. 
+
+Tested on OS X 10.10.3, FreeBSD 10.1 and MidnightBSD 0.6.

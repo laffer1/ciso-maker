@@ -412,7 +412,7 @@ main(int argc, char *argv[])
 	FILE *fin, *fout;
 	const char *fname_in, *fname_out;
 
-	fprintf(stderr, "Compressed ISO9660 converter Ver.1.03 by BOOSTER, froom, and Lucas Holt\n");
+	fprintf(stderr, "Compressed ISO9660 converter Ver.1.05 by BOOSTER, froom, and Lucas Holt\n");
 
 	while ((ch = getopt(argc, argv, "cxl:")) != -1)
 	{
