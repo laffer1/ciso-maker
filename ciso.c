@@ -28,10 +28,12 @@
 #include <limits.h>
 #include <unistd.h>
 
-#include <getopt.h>
-
 #include <zlib.h>
+
+#ifndef __APPLE__
+#include <getopt.h>
 #include <zconf.h>
+#endif
 
 #include "ciso.h"
 
@@ -87,7 +89,7 @@ decompress_cso_to_iso(FILE *fin, FILE *fout)
 {
 	unsigned int index, index2;
 	unsigned long long read_pos, read_size;
-	int index_size;
+	size_t index_size;
 	int block;
 	int cmp_size;
 	int status;
@@ -217,7 +219,7 @@ decompress_cso_to_iso(FILE *fin, FILE *fout)
 		}
 		
 		/* write decompressed block */
-		if (fwrite(block_buf1, 1,cmp_size , fout) != cmp_size)
+		if (fwrite(block_buf1, 1, (size_t) cmp_size, fout) != cmp_size)
 		{
 			fprintf(stderr, "block %d : Write error\n",block);
 			return (1);
@@ -249,7 +251,9 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 	int status;
 	int percent_period;
 	int percent_cnt;
-	int align,align_b,align_m;
+	size_t align;
+	size_t align_b;
+	size_t align_m;
 
 	file_size = check_file_size(fin);
 	if (file_size == ULLONG_MAX)
@@ -295,7 +299,7 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 	percent_period = ciso_total_block / 100;
 	percent_cnt    = ciso_total_block / 100;
 
-	align_b = 1 << (ciso.align);
+	align_b = (size_t) (1 << (ciso.align));
 	align_m = align_b - 1;
 
 	for (block = 0; block < ciso_total_block; block++)
@@ -328,13 +332,13 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 		}
 
 		/* mark offset index */
-		index_buf[block] = write_pos>>(ciso.align);
+		index_buf[block] = (unsigned int) (write_pos>>(ciso.align));
 
 		/* read buffer */
 		z.next_out  = block_buf2;
 		z.avail_out = ciso.block_size * 2;
 		z.next_in   = block_buf1;
-		z.avail_in  = fread(block_buf1, 1, ciso.block_size , fin);
+		z.avail_in  = (uInt) fread(block_buf1, 1, ciso.block_size , fin);
 		
 		if (z.avail_in != ciso.block_size)
 		{
@@ -379,7 +383,7 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 	}
 
 	/* last position (total size)*/
-	index_buf[block] = write_pos>>(ciso.align);
+	index_buf[block] = (unsigned int) (write_pos>>(ciso.align));
 
 	/* write header & index block */
 	fseek(fout, sizeof(ciso), SEEK_SET);
