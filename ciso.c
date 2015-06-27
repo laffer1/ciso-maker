@@ -242,10 +242,10 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 {
 	unsigned long long file_size;
 	unsigned long long write_pos;
-	int index_size;
+	size_t index_size;
 	int block;
 	unsigned char buf4[64];
-	int cmp_size;
+	size_t cmp_size;
 	int status;
 	int percent_period;
 	int percent_cnt;
@@ -410,7 +410,8 @@ main(int argc, char *argv[])
 	int ch;
 	bool xFlag = false;
 	FILE *fin, *fout;
-	const char *fname_in, *fname_out;
+	char *fname_in = NULL;
+	char *fname_out = NULL;
 
 	fprintf(stderr, "Compressed ISO9660 converter Ver.1.05 by BOOSTER, froom, and Lucas Holt\n");
 
