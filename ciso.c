@@ -88,7 +88,8 @@ static int
 decompress_cso_to_iso(FILE *fin, FILE *fout)
 {
 	unsigned int index, index2;
-	unsigned long long read_pos, read_size;
+	unsigned long long read_pos;
+	int read_size;
 	size_t index_size;
 	int block;
 	int cmp_size;
