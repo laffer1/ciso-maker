@@ -1,7 +1,7 @@
 DESTDIR= 
 PREFIX?=	/usr/local
 MANPREFIX?=	${PREFIX}
-CC?=	gcc
+CC?=	cc
 CFLAGS?= -Wall -pedantic -std=c99 -O2
 LDFLAGS?=
 INSTALL = install
