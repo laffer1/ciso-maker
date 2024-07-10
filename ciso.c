@@ -121,6 +121,11 @@ decompress_cso_to_iso(FILE *fin, FILE *fout)
 	 
 	ciso_total_block = ciso.total_bytes / ciso.block_size;
 
+	if (ciso_total_block < 1) {
+		fprintf(stderr, "total block less than 1.\n");
+        return 1;
+	}
+
 	/* allocate index block */
 	index_size = (ciso_total_block + 1) * sizeof(unsigned long);
 	index_buf  = calloc(1, index_size);
