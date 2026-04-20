@@ -38,6 +38,10 @@
 
 #include "ciso.h"
 
+#ifndef CISO_MAKER_VERSION
+#define CISO_MAKER_VERSION "1.1.0"
+#endif
+
 static unsigned long long check_file_size(FILE *);
 static unsigned long long get_stream_size(FILE *);
 static int validate_cso_header(unsigned long long);
@@ -559,7 +563,8 @@ main(int argc, char *argv[])
 	char *fname_in = NULL;
 	char *fname_out = NULL;
 
-	fprintf(stderr, "Compressed ISO9660 converter Ver.1.05 by BOOSTER, froom, and Lucas Holt\n");
+	fprintf(stderr, "Compressed ISO9660 converter Ver.%s by BOOSTER, froom, and Lucas Holt\n",
+		CISO_MAKER_VERSION);
 
 	while ((ch = getopt(argc, argv, "cxl:")) != -1)
 	{
