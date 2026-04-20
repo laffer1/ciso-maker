@@ -48,7 +48,7 @@ static int validate_cso_header(unsigned long long);
 static int validate_index_entry(size_t, unsigned long long, unsigned long long);
 static int compress_iso_to_cso(FILE *, FILE *, int);
 static int decompress_cso_to_iso(FILE *, FILE *);
-static void usage();
+static void usage(void);
 
 z_stream z;
 
@@ -542,7 +542,7 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 }
 
 static void
-usage()
+usage(void)
 {
 	fprintf(stderr, "usage: ciso-maker [-c] [-x] -l level infile outfile\n");
 	fprintf(stderr, "-c compresses\n");
