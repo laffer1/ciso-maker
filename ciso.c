@@ -52,9 +52,10 @@ static int seek_stream(FILE *, unsigned long long);
 static int same_file_path(const char *, const char *);
 static int validate_cso_header(unsigned long long);
 static int validate_index_entry(size_t, unsigned long long, unsigned long long);
+static int validate_iso_input_size(unsigned long long);
 static int compress_iso_to_cso(FILE *, FILE *, int);
 static int decompress_cso_to_iso(FILE *, FILE *);
-static void usage(void);
+static void usage(FILE *, int);
 
 z_stream z;
 
@@ -192,6 +193,19 @@ validate_cso_header(unsigned long long input_size)
 	if (input_size < sizeof(ciso) + index_bytes)
 	{
 		fprintf(stderr, "file read error\n");
+		return 1;
+	}
+
+	return 0;
+}
+
+static int
+validate_iso_input_size(unsigned long long input_size)
+{
+	if (input_size == 0 || input_size % ciso.block_size != 0)
+	{
+		fprintf(stderr, "input file must be a non-empty multiple of %u bytes\n",
+			ciso.block_size);
 		return 1;
 	}
 
@@ -424,6 +438,9 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 		return (1);
 	}
 
+	if (validate_iso_input_size(file_size) != 0)
+		return 1;
+
 	/* allocate index block */
 	if (ciso_total_block > (SIZE_MAX / sizeof(*index_buf)) - 1)
 	{
@@ -592,14 +609,14 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 }
 
 static void
-usage(void)
+usage(FILE *stream, int exit_code)
 {
-	fprintf(stderr, "usage: ciso-maker [-c] [-x] -l level infile outfile\n");
-	fprintf(stderr, "-c compresses\n");
-	fprintf(stderr, "-x extracts e.g level 0\n");
-	fprintf(stderr, "  level: 1-9 compress ISO to CSO (1=fast/large - 9=small/slow\n");
-	fprintf(stderr, "         0   decompress CSO to ISO\n");
-	exit(0);
+	fprintf(stream, "usage: ciso-maker [-c] [-x] -l level infile outfile\n");
+	fprintf(stream, "-c compresses\n");
+	fprintf(stream, "-x extracts e.g level 0\n");
+	fprintf(stream, "  level: 1-9 compress ISO to CSO (1=fast/large - 9=small/slow\n");
+	fprintf(stream, "         0   decompress CSO to ISO\n");
+	exit(exit_code);
 }
 
 int
@@ -629,7 +646,7 @@ main(int argc, char *argv[])
 				break;
 			case '?':
 			default:
-				usage();
+				usage(stderr, 1);
 		}
 	}
 	argc -= optind;
@@ -649,13 +666,13 @@ main(int argc, char *argv[])
 	}
 	else
 	{
-		usage();
+		usage(stderr, 1);
 	}
 
 	if (level < 0 || level > 9)
 	{
 		fprintf(stderr, "Unknown mode: %c\n", level);
-		usage();
+		usage(stderr, 1);
 		return 1;
 	}
 
@@ -695,7 +712,11 @@ main(int argc, char *argv[])
 	free(block_buf2);
 
 	fclose(fin);
-	fclose(fout);
+	if (fclose(fout) != 0)
+	{
+		fprintf(stderr, "Can't close %s\n", fname_out);
+		return 1;
+	}
 	
 	return (result);
 }
