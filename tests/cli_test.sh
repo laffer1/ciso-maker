@@ -1,4 +1,4 @@
-#!/usr/bin/atf-sh
+#!/usr/bin/env atf-sh
 
 atf_test_case round_trip
 round_trip_head() {
