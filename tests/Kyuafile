@@ -1,0 +1,5 @@
+syntax(2)
+
+test_suite("ciso-maker")
+
+atf_test_program{name="cli_test.sh"}

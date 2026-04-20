@@ -10,17 +10,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev
+        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev kyua atf-sh
       - name: Build
         run: make
+      - name: Test
+        run: kyua test -k Kyuafile && kyua report
 
   freebsd:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build in FreeBSD VM
+      - name: Build and test in FreeBSD VM
         uses: vmactions/freebsd-vm@v1
         with:
           usesh: true
-          prepare: pkg install -y gmake
-          run: gmake
+          prepare: pkg install -y gmake kyua atf
+          run: |
+            gmake
+            kyua test -k Kyuafile
+            kyua report

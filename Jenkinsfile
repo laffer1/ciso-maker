@@ -12,12 +12,10 @@ pipeline {
             }
         }
 
-        stage('Smoke Test') {
+        stage('Test') {
             steps {
-                sh 'truncate -s 2048 tiny.iso'
-                sh './ciso-maker tiny.iso tiny.cso'
-                sh './ciso-maker -x tiny.cso tiny.out.iso'
-                sh 'cmp -s tiny.iso tiny.out.iso'
+                sh 'kyua test -k Kyuafile'
+                sh 'kyua report'
             }
         }
     }

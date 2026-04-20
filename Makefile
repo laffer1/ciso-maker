@@ -21,5 +21,9 @@ install :
 	$(INSTALL) -m 755 ciso-maker $(DESTDIR)${PREFIX}/bin/ciso-maker
 	$(INSTALL) -m 644 ${MAN} ${DESTDIR}${MANPREFIX}/man/man1
 
+test: ciso-maker
+	kyua test -k Kyuafile
+	kyua report
+
 clean:
 	rm -rf *.o ciso-maker

@@ -1,0 +1,5 @@
+syntax(2)
+
+test_suite("ciso-maker")
+
+include("tests/Kyuafile")
