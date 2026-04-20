@@ -28,8 +28,10 @@
 #include <string.h>
 #include <stdint.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <limits.h>
 #include <unistd.h>
+#include <errno.h>
 
 #include <zlib.h>
 
@@ -47,6 +49,7 @@
 static unsigned long long check_file_size(FILE *);
 static unsigned long long get_stream_size(FILE *);
 static int seek_stream(FILE *, unsigned long long);
+static int same_file_path(const char *, const char *);
 static int validate_cso_header(unsigned long long);
 static int validate_index_entry(size_t, unsigned long long, unsigned long long);
 static int compress_iso_to_cso(FILE *, FILE *, int);
@@ -124,6 +127,25 @@ seek_stream(FILE *fp, unsigned long long pos)
 		return -1;
 
 	return fseeko(fp, (off_t) pos, SEEK_SET);
+}
+
+static int
+same_file_path(const char *path1, const char *path2)
+{
+	struct stat st1;
+	struct stat st2;
+
+	if (stat(path1, &st1) != 0)
+		return 0;
+
+	if (stat(path2, &st2) != 0)
+	{
+		if (errno == ENOENT)
+			return 0;
+		return 0;
+	}
+
+	return st1.st_dev == st2.st_dev && st1.st_ino == st2.st_ino;
 }
 
 static int
@@ -434,10 +456,18 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 	printf("compress level  %d\n", level);
 
 	/* write header block */
-	fwrite(&ciso,1, sizeof(ciso), fout);
+	if (fwrite(&ciso, 1, sizeof(ciso), fout) != sizeof(ciso))
+	{
+		fprintf(stderr, "header write error\n");
+		return 1;
+	}
 
 	/* dummy write index block */
-	fwrite(index_buf, 1, index_size, fout);
+	if (fwrite(index_buf, 1, index_size, fout) != index_size)
+	{
+		fprintf(stderr, "index write error\n");
+		return 1;
+	}
 
 	write_pos = sizeof(ciso) + index_size;
 
@@ -549,7 +579,11 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 		fprintf(stderr, "header rewrite seek error\n");
 		return 1;
 	}
-	fwrite(index_buf, 1, index_size, fout);
+	if (fwrite(index_buf, 1, index_size, fout) != index_size)
+	{
+		fprintf(stderr, "index rewrite error\n");
+		return 1;
+	}
 
 	printf("ciso compress completed , total size = %8d bytes, rate %d%%\n"
 		, (int)write_pos, (int)(write_pos * 100 / ciso.total_bytes));
@@ -628,6 +662,13 @@ main(int argc, char *argv[])
 	if ((fin = fopen(fname_in, "rb")) == NULL)
 	{
 		fprintf(stderr, "Can't open %s\n", fname_in);
+		return 1;
+	}
+
+	if (same_file_path(fname_in, fname_out))
+	{
+		fprintf(stderr, "Input and output must be different files\n");
+		fclose(fin);
 		return 1;
 	}
 
