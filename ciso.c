@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <stdint.h>
 #include <limits.h>
 #include <unistd.h>
 
@@ -38,19 +39,22 @@
 #include "ciso.h"
 
 static unsigned long long check_file_size(FILE *);
+static unsigned long long get_stream_size(FILE *);
+static int validate_cso_header(unsigned long long);
+static int validate_index_entry(size_t, unsigned long long, unsigned long long);
 static int compress_iso_to_cso(FILE *, FILE *, int);
 static int decompress_cso_to_iso(FILE *, FILE *);
 static void usage();
 
 z_stream z;
 
-unsigned int *index_buf = NULL;
-unsigned int *crc_buf = NULL;
+uint32_t *index_buf = NULL;
+uint32_t *crc_buf = NULL;
 unsigned char *block_buf1 = NULL;
 unsigned char *block_buf2 = NULL;
 
 CISO_H ciso;
-int ciso_total_block;
+size_t ciso_total_block;
 
 /* returns ULLONG_MAX on error */
 static unsigned long long
@@ -58,10 +62,8 @@ check_file_size(FILE *fp)
 {
 	unsigned long long pos;
 
-	if (fseek(fp,0,SEEK_END) < 0)
-		return ULLONG_MAX;
-	pos = ftell(fp);
-	if (pos == -1)
+	pos = get_stream_size(fp);
+	if (pos == ULLONG_MAX)
 		return ULLONG_MAX;
 
 	/* init ciso header */
@@ -71,6 +73,7 @@ check_file_size(FILE *fp)
 	ciso.magic[1] = 'I';
 	ciso.magic[2] = 'S';
 	ciso.magic[3] = 'O';
+	ciso.header_size = sizeof(ciso);
 	ciso.ver      = 0x01;
 
 	ciso.block_size  = 0x800; /* ISO9660 one of sector */
@@ -83,20 +86,122 @@ check_file_size(FILE *fp)
 	return pos;
 }
 
+/* returns ULLONG_MAX on error and preserves the current stream position */
+static unsigned long long
+get_stream_size(FILE *fp)
+{
+	long cur_pos;
+	long end_pos;
+
+	cur_pos = ftell(fp);
+	if (cur_pos < 0)
+		return ULLONG_MAX;
+
+	if (fseek(fp, 0, SEEK_END) < 0)
+		return ULLONG_MAX;
+
+	end_pos = ftell(fp);
+	if (end_pos < 0)
+		return ULLONG_MAX;
+
+	if (fseek(fp, cur_pos, SEEK_SET) < 0)
+		return ULLONG_MAX;
+
+	return (unsigned long long) end_pos;
+}
+
+static int
+validate_cso_header(unsigned long long input_size)
+{
+	unsigned long long index_bytes;
+
+	if (
+		ciso.magic[0] != 'C' ||
+		ciso.magic[1] != 'I' ||
+		ciso.magic[2] != 'S' ||
+		ciso.magic[3] != 'O' ||
+		ciso.header_size != sizeof(ciso) ||
+		ciso.ver != 0x01 ||
+		ciso.block_size == 0 ||
+		ciso.total_bytes == 0 ||
+		ciso.align > 31
+	)
+	{
+		fprintf(stderr, "ciso file format error\n");
+		return 1;
+	}
+
+	if (ciso.total_bytes % ciso.block_size != 0)
+	{
+		fprintf(stderr, "ciso file format error\n");
+		return 1;
+	}
+
+	ciso_total_block = (size_t) (ciso.total_bytes / ciso.block_size);
+	if (ciso_total_block < 1)
+	{
+		fprintf(stderr, "total block less than 1.\n");
+		return 1;
+	}
+
+	if (ciso_total_block > (SIZE_MAX / sizeof(*index_buf)) - 1)
+	{
+		fprintf(stderr, "ciso index too large\n");
+		return 1;
+	}
+
+	index_bytes = (unsigned long long) (ciso_total_block + 1) * sizeof(*index_buf);
+	if (input_size < sizeof(ciso) + index_bytes)
+	{
+		fprintf(stderr, "file read error\n");
+		return 1;
+	}
+
+	return 0;
+}
+
+static int
+validate_index_entry(size_t block, unsigned long long start_pos, unsigned long long end_pos)
+{
+	unsigned long long max_read_size;
+
+	if (start_pos > end_pos)
+	{
+		fprintf(stderr, "block %zu : invalid index order\n", block);
+		return 1;
+	}
+
+	if (end_pos - start_pos > UINT_MAX)
+	{
+		fprintf(stderr, "block %zu : block size too large\n", block);
+		return 1;
+	}
+
+	max_read_size = (unsigned long long) ciso.block_size * 2;
+	if (end_pos - start_pos > max_read_size)
+	{
+		fprintf(stderr, "block %zu : compressed block too large\n", block);
+		return 1;
+	}
+
+	return 0;
+}
 
 static int
 decompress_cso_to_iso(FILE *fin, FILE *fout)
 {
-	unsigned int index, index2;
+	unsigned long long input_size;
+	uint32_t index;
+	uint32_t index2;
 	unsigned long long read_pos;
-	int read_size;
+	size_t read_size;
 	size_t index_size;
-	int block;
-	int cmp_size;
+	size_t block;
+	size_t cmp_size;
 	int status;
-	int percent_period;
-	int percent_cnt;
-	int plain;
+	size_t percent_period;
+	size_t percent_cnt;
+	bool plain;
 
 	/* read header */
 	if (fread(&ciso, 1, sizeof(ciso), fin) != sizeof(ciso))
@@ -106,28 +211,18 @@ decompress_cso_to_iso(FILE *fin, FILE *fout)
 	}
 
 	/* check header */
-	if (
-		ciso.magic[0] != 'C' ||
-		ciso.magic[1] != 'I' ||
-		ciso.magic[2] != 'S' ||
-		ciso.magic[3] != 'O' ||
-		ciso.block_size ==0  ||
-		ciso.total_bytes == 0
-	)
+	input_size = get_stream_size(fin);
+	if (input_size == ULLONG_MAX)
 	{
-		fprintf(stderr, "ciso file format error\n");
+		fprintf(stderr, "Can't get file size or size too large\n");
 		return 1;
 	}
-	 
-	ciso_total_block = ciso.total_bytes / ciso.block_size;
 
-	if (ciso_total_block < 1) {
-		fprintf(stderr, "total block less than 1.\n");
-        return 1;
-	}
+	if (validate_cso_header(input_size) != 0)
+		return 1;
 
 	/* allocate index block */
-	index_size = (ciso_total_block + 1) * sizeof(unsigned long);
+	index_size = (ciso_total_block + 1) * sizeof(*index_buf);
 	index_buf  = calloc(1, index_size);
 	block_buf1 = calloc(1, ciso.block_size);
 	block_buf2 = calloc(2, ciso.block_size);
@@ -148,8 +243,8 @@ decompress_cso_to_iso(FILE *fin, FILE *fout)
 	/* show info */
 	printf("Total File Size %llu bytes\n", ciso.total_bytes);
 	printf("block size      %d  bytes\n", ciso.block_size);
-	printf("total blocks    %d  blocks\n", ciso_total_block);
-	printf("index align     %d\n", 1 << ciso.align);
+	printf("total blocks    %zu  blocks\n", ciso_total_block);
+	printf("index align     %u\n", 1U << ciso.align);
 
 	/* init zlib */
 	z.zalloc = Z_NULL;
@@ -158,6 +253,8 @@ decompress_cso_to_iso(FILE *fin, FILE *fout)
 
 	/* decompress data */
 	percent_period = ciso_total_block / 100;
+	if (percent_period == 0)
+		percent_period = 1;
 	percent_cnt = 0;
 
 	for (block = 0; block < ciso_total_block; block++)
@@ -165,18 +262,18 @@ decompress_cso_to_iso(FILE *fin, FILE *fout)
 		if (--percent_cnt <= 0)
 		{
 			percent_cnt = percent_period;
-			printf("decompress %d%%\r",block / percent_period);
+			printf("decompress %zu%%\r", block / percent_period);
 		}
 
 		if (inflateInit2(&z,-15) != Z_OK)
 		{
-			fprintf(stderr, "deflateInit : %s\n", (z.msg) ? z.msg : "???");
+			fprintf(stderr, "inflateInit : %s\n", (z.msg) ? z.msg : "???");
 			return (1);
 		}
 
 		/* check index */
 		index  = index_buf[block];
-		plain  = index & 0x80000000;
+		plain  = (index & 0x80000000U) != 0;
 		index  &= 0x7fffffff;
 		read_pos = index << (ciso.align);
 		if (plain)
@@ -185,15 +282,33 @@ decompress_cso_to_iso(FILE *fin, FILE *fout)
 		}
 		else
 		{
-			index2 = index_buf[block + 1] & 0x7fffffff;
-			read_size = (index2 - index) << (ciso.align);
+			index2 = index_buf[block + 1] & 0x7fffffffU;
+			if (validate_index_entry(block, read_pos, (unsigned long long) index2 << ciso.align) != 0)
+			{
+				inflateEnd(&z);
+				return 1;
+			}
+			read_size = ((size_t) (index2 - index)) << ciso.align;
 		}
-		fseek(fin,read_pos,SEEK_SET);
+		if (plain && read_pos + read_size > input_size)
+		{
+			fprintf(stderr, "block %zu : read error\n", block);
+			inflateEnd(&z);
+			return 1;
+		}
 
-		z.avail_in  = fread(block_buf2, 1, read_size , fin);
+		if (fseek(fin, (long) read_pos, SEEK_SET) != 0)
+		{
+			fprintf(stderr, "block %zu : seek error\n", block);
+			inflateEnd(&z);
+			return 1;
+		}
+
+		z.avail_in  = (uInt) fread(block_buf2, 1, read_size , fin);
 		if (z.avail_in != read_size)
 		{
-			fprintf(stderr, "block=%d : read error\n", block);
+			fprintf(stderr, "block=%zu : read error\n", block);
+			inflateEnd(&z);
 			return (1);
 		}
 
@@ -211,7 +326,8 @@ decompress_cso_to_iso(FILE *fin, FILE *fout)
 			
 			if (status != Z_STREAM_END)
 			{
-				fprintf(stderr, "block %d:inflate : %s[%d]\n", block,(z.msg) ? z.msg : "error",status);
+				fprintf(stderr, "block %zu:inflate : %s[%d]\n", block,(z.msg) ? z.msg : "error",status);
+				inflateEnd(&z);
 				return (1);
 			}
 			
@@ -219,7 +335,8 @@ decompress_cso_to_iso(FILE *fin, FILE *fout)
 			
 			if (cmp_size != ciso.block_size)
 			{
-				fprintf(stderr, "block %d : block size error %d != %d\n",block,cmp_size , ciso.block_size);
+				fprintf(stderr, "block %zu : block size error %zu != %u\n",block,cmp_size , ciso.block_size);
+				inflateEnd(&z);
 				return (1);
 			}
 		}
@@ -227,7 +344,8 @@ decompress_cso_to_iso(FILE *fin, FILE *fout)
 		/* write decompressed block */
 		if (fwrite(block_buf1, 1, (size_t) cmp_size, fout) != cmp_size)
 		{
-			fprintf(stderr, "block %d : Write error\n",block);
+			fprintf(stderr, "block %zu : Write error\n",block);
+			inflateEnd(&z);
 			return (1);
 		}
 
@@ -251,12 +369,12 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 	unsigned long long file_size;
 	unsigned long long write_pos;
 	size_t index_size;
-	int block;
+	size_t block;
 	unsigned char buf4[64];
 	size_t cmp_size;
 	int status;
-	int percent_period;
-	int percent_cnt;
+	size_t percent_period;
+	size_t percent_cnt;
 	size_t align;
 	size_t align_b;
 	size_t align_m;
@@ -269,7 +387,13 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 	}
 
 	/* allocate index block */
-	index_size = (ciso_total_block + 1) * sizeof(unsigned long);
+	if (ciso_total_block > (SIZE_MAX / sizeof(*index_buf)) - 1)
+	{
+		fprintf(stderr, "ciso index too large\n");
+		return 1;
+	}
+
+	index_size = (ciso_total_block + 1) * sizeof(*index_buf);
 	index_buf  = calloc(1, index_size);
 	crc_buf    = calloc(1, index_size);
 	block_buf1 = calloc(1, ciso.block_size);
@@ -290,7 +414,7 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 	/* show info */
 	printf("Total File Size %llu bytes\n", ciso.total_bytes);
 	printf("block size      %d  bytes\n", ciso.block_size);
-	printf("index align     %d\n", 1 << ciso.align);
+	printf("index align     %u\n", 1U << ciso.align);
 	printf("compress level  %d\n", level);
 
 	/* write header block */
@@ -303,7 +427,9 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 
 	/* compress data */
 	percent_period = ciso_total_block / 100;
-	percent_cnt    = ciso_total_block / 100;
+	if (percent_period == 0)
+		percent_period = 1;
+	percent_cnt    = percent_period;
 
 	align_b = (size_t) (1 << (ciso.align));
 	align_m = align_b - 1;
@@ -313,7 +439,7 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 		if (--percent_cnt <= 0)
 		{
 			percent_cnt = percent_period;
-			printf("compress %3d%% avarage rate %3llu%%\r"
+			printf("compress %3zu%% avarage rate %3llu%%\r"
 				, block / percent_period
 				, block==0 ? 0 : 100 * write_pos / (block * 0x800));
 		}
@@ -325,20 +451,25 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 		}
 
 		/* write align */
-		align = (int)write_pos & align_m;
+		align = (size_t) write_pos & align_m;
 		if (align)
 		{
 			align = align_b - align;
 			if (fwrite(buf4, 1, align, fout) != align)
 			{
-				printf("block %d : Write error\n",block);
+				printf("block %zu : Write error\n",block);
 				return 1;
 			}
 			write_pos += align;
 		}
 
 		/* mark offset index */
-		index_buf[block] = (unsigned int) (write_pos>>(ciso.align));
+		if ((write_pos >> ciso.align) > 0x7fffffffU)
+		{
+			fprintf(stderr, "compressed file too large for ciso index\n");
+			return 1;
+		}
+		index_buf[block] = (uint32_t) (write_pos >> ciso.align);
 
 		/* read buffer */
 		z.next_out  = block_buf2;
@@ -348,14 +479,14 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 		
 		if (z.avail_in != ciso.block_size)
 		{
-			printf("block=%d : read error\n",block);
+			printf("block=%zu : read error\n",block);
 			return 1;
 		}
 
 		status = deflate(&z, Z_FINISH);
 		if (status != Z_STREAM_END)
 		{
-			printf("block %d:deflate : %s[%d]\n", block,(z.msg) ? z.msg : "error",status);
+			printf("block %zu:deflate : %s[%d]\n", block,(z.msg) ? z.msg : "error",status);
 			return 1;
 		}
 
@@ -367,13 +498,13 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 			cmp_size = ciso.block_size;
 			memcpy(block_buf2, block_buf1, cmp_size);
 			/* plain block mark */
-			index_buf[block] |= 0x80000000;
+			index_buf[block] |= 0x80000000U;
 		}
 
 		/* write compressed block */
 		if (fwrite(block_buf2, 1, cmp_size , fout) != cmp_size)
 		{
-			printf("block %d : Write error\n",block);
+			printf("block %zu : Write error\n",block);
 			return 1;
 		}
 
@@ -389,7 +520,12 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 	}
 
 	/* last position (total size)*/
-	index_buf[block] = (unsigned int) (write_pos>>(ciso.align));
+	if ((write_pos >> ciso.align) > 0x7fffffffU)
+	{
+		fprintf(stderr, "compressed file too large for ciso index\n");
+		return 1;
+	}
+	index_buf[block] = (uint32_t) (write_pos >> ciso.align);
 
 	/* write header & index block */
 	fseek(fout, sizeof(ciso), SEEK_SET);
