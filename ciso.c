@@ -19,6 +19,7 @@
     Copyright 2005 BOOSTER
 */
 
+#define _POSIX_C_SOURCE 200112L
 #define _XOPEN_SOURCE
 
 #include <stdio.h>
@@ -26,6 +27,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdint.h>
+#include <sys/types.h>
 #include <limits.h>
 #include <unistd.h>
 
@@ -44,6 +46,7 @@
 
 static unsigned long long check_file_size(FILE *);
 static unsigned long long get_stream_size(FILE *);
+static int seek_stream(FILE *, unsigned long long);
 static int validate_cso_header(unsigned long long);
 static int validate_index_entry(size_t, unsigned long long, unsigned long long);
 static int compress_iso_to_cso(FILE *, FILE *, int);
@@ -94,24 +97,33 @@ check_file_size(FILE *fp)
 static unsigned long long
 get_stream_size(FILE *fp)
 {
-	long cur_pos;
-	long end_pos;
+	off_t cur_pos;
+	off_t end_pos;
 
-	cur_pos = ftell(fp);
+	cur_pos = ftello(fp);
 	if (cur_pos < 0)
 		return ULLONG_MAX;
 
-	if (fseek(fp, 0, SEEK_END) < 0)
+	if (fseeko(fp, 0, SEEK_END) < 0)
 		return ULLONG_MAX;
 
-	end_pos = ftell(fp);
+	end_pos = ftello(fp);
 	if (end_pos < 0)
 		return ULLONG_MAX;
 
-	if (fseek(fp, cur_pos, SEEK_SET) < 0)
+	if (fseeko(fp, cur_pos, SEEK_SET) < 0)
 		return ULLONG_MAX;
 
 	return (unsigned long long) end_pos;
+}
+
+static int
+seek_stream(FILE *fp, unsigned long long pos)
+{
+	if (pos > (unsigned long long) LLONG_MAX)
+		return -1;
+
+	return fseeko(fp, (off_t) pos, SEEK_SET);
 }
 
 static int
@@ -259,7 +271,7 @@ decompress_cso_to_iso(FILE *fin, FILE *fout)
 	percent_period = ciso_total_block / 100;
 	if (percent_period == 0)
 		percent_period = 1;
-	percent_cnt = 0;
+	percent_cnt = percent_period;
 
 	for (block = 0; block < ciso_total_block; block++)
 	{
@@ -301,7 +313,7 @@ decompress_cso_to_iso(FILE *fin, FILE *fout)
 			return 1;
 		}
 
-		if (fseek(fin, (long) read_pos, SEEK_SET) != 0)
+		if (seek_stream(fin, read_pos) != 0)
 		{
 			fprintf(stderr, "block %zu : seek error\n", block);
 			inflateEnd(&z);
@@ -532,7 +544,11 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 	index_buf[block] = (uint32_t) (write_pos >> ciso.align);
 
 	/* write header & index block */
-	fseek(fout, sizeof(ciso), SEEK_SET);
+	if (fseeko(fout, (off_t) sizeof(ciso), SEEK_SET) != 0)
+	{
+		fprintf(stderr, "header rewrite seek error\n");
+		return 1;
+	}
 	fwrite(index_buf, 1, index_size, fout);
 
 	printf("ciso compress completed , total size = %8d bytes, rate %d%%\n"
