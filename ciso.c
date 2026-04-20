@@ -39,7 +39,7 @@
 #include "ciso.h"
 
 #ifndef CISO_MAKER_VERSION
-#define CISO_MAKER_VERSION "1.1.0"
+#define CISO_MAKER_VERSION "1.1.1"
 #endif
 
 static unsigned long long check_file_size(FILE *);

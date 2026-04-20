@@ -1,7 +1,7 @@
 DESTDIR= 
 PREFIX?=	/usr/local
 MANPREFIX?=	${PREFIX}
-VERSION?=	1.1.0
+VERSION?=	1.1.1
 CC?=	cc
 CPPFLAGS?=	-DCISO_MAKER_VERSION=\"${VERSION}\"
 CFLAGS?= -Wall -pedantic -std=c99 -O2

@@ -6,7 +6,7 @@ patches floating around to the tool and keep it going.
 
 Current Site: http://github.com/laffer1/ciso-maker
 Current Maintainer: Lucas Holt <luke@foolishgames.com>
-Current Version: 1.1.0
+Current Version: 1.1.1
 
 ### Usage ###
 
@@ -18,8 +18,8 @@ Compressing a file
 
 ### OS Compatibility ###
 
-As of version 1.1.0, ciso-maker compiles on Linux with
-GCC 15.2.0 and clang 19.1.7. It also builds on MidnightBSD 4.0.4 with clang 19.1.7
+As of version 1.1.1, ciso-maker compiles on Linux with
+GCC 15.2.0 and clang 19.1.7. It also builds on MidnightBSD 4.0.4 with clang 19.1.7.
 
 Historically tested on OS X 10.10.3, FreeBSD 10.1 and MidnightBSD 0.6.
 Continuous integration covers Linux and FreeBSD builds. MidnightBSD should
