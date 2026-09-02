@@ -303,6 +303,12 @@ decompress_cso_to_iso(FILE *fin, FILE *fout)
 	z.zfree  = Z_NULL;
 	z.opaque = Z_NULL;
 
+	if (inflateInit2(&z,-15) != Z_OK)
+	{
+		fprintf(stderr, "inflateInit : %s\n", (z.msg) ? z.msg : "???");
+		return (1);
+	}
+
 	/* decompress data */
 	percent_period = ciso_total_block / 100;
 	if (percent_period == 0)
@@ -317,10 +323,14 @@ decompress_cso_to_iso(FILE *fin, FILE *fout)
 			printf("decompress %zu%%\r", block / percent_period);
 		}
 
-		if (inflateInit2(&z,-15) != Z_OK)
+		if (block > 0)
 		{
-			fprintf(stderr, "inflateInit : %s\n", (z.msg) ? z.msg : "???");
-			return (1);
+			if (inflateReset(&z) != Z_OK)
+			{
+				fprintf(stderr, "inflateReset : %s\n", (z.msg) ? z.msg : "???");
+				inflateEnd(&z);
+				return (1);
+			}
 		}
 
 		/* check index */
@@ -401,12 +411,12 @@ decompress_cso_to_iso(FILE *fin, FILE *fout)
 			return (1);
 		}
 
-		/* term zlib */
-		if (inflateEnd(&z) != Z_OK)
-		{
-			fprintf(stderr, "inflateEnd : %s\n", (z.msg) ? z.msg : "error");
-			return (1);
-		}
+	}
+
+	if (inflateEnd(&z) != Z_OK)
+	{
+		fprintf(stderr, "inflateEnd : %s\n", (z.msg) ? z.msg : "error");
+		return (1);
 	}
 
 	printf("ciso decompress completed\n");
@@ -497,6 +507,12 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 	align_b = (size_t) (1 << (ciso.align));
 	align_m = align_b - 1;
 
+	if (deflateInit2(&z, level, Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY) != Z_OK)
+	{
+		printf("deflateInit : %s\n", (z.msg) ? z.msg : "???");
+		return 1;
+	}
+
 	for (block = 0; block < ciso_total_block; block++)
 	{
 		if (--percent_cnt <= 0)
@@ -507,10 +523,14 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 				, block==0 ? 0 : 100 * write_pos / (block * 0x800));
 		}
 
-		if (deflateInit2(&z, level, Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY) != Z_OK)
+		if (block > 0)
 		{
-			printf("deflateInit : %s\n", (z.msg) ? z.msg : "???");
-			return 1;
+			if (deflateReset(&z) != Z_OK)
+			{
+				printf("deflateReset : %s\n", (z.msg) ? z.msg : "???");
+				deflateEnd(&z);
+				return 1;
+			}
 		}
 
 		/* write align */
@@ -521,6 +541,7 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 			if (fwrite(buf4, 1, align, fout) != align)
 			{
 				printf("block %zu : Write error\n",block);
+				deflateEnd(&z);
 				return 1;
 			}
 			write_pos += align;
@@ -530,6 +551,7 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 		if ((write_pos >> ciso.align) > 0x7fffffffU)
 		{
 			fprintf(stderr, "compressed file too large for ciso index\n");
+			deflateEnd(&z);
 			return 1;
 		}
 		index_buf[block] = (uint32_t) (write_pos >> ciso.align);
@@ -543,6 +565,7 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 		if (z.avail_in != ciso.block_size)
 		{
 			printf("block=%zu : read error\n",block);
+			deflateEnd(&z);
 			return 1;
 		}
 
@@ -550,6 +573,7 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 		if (status != Z_STREAM_END)
 		{
 			printf("block %zu:deflate : %s[%d]\n", block,(z.msg) ? z.msg : "error",status);
+			deflateEnd(&z);
 			return 1;
 		}
 
@@ -568,27 +592,28 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 		if (fwrite(block_buf2, 1, cmp_size , fout) != cmp_size)
 		{
 			printf("block %zu : Write error\n",block);
+			deflateEnd(&z);
 			return 1;
 		}
 
 		/* mark next index */
 		write_pos += cmp_size;
-
-		/* term zlib */
-		if (deflateEnd(&z) != Z_OK)
-		{
-			printf("deflateEnd : %s\n", (z.msg) ? z.msg : "error");
-			return 1;
-		}
 	}
 
 	/* last position (total size)*/
 	if ((write_pos >> ciso.align) > 0x7fffffffU)
 	{
 		fprintf(stderr, "compressed file too large for ciso index\n");
+		deflateEnd(&z);
 		return 1;
 	}
 	index_buf[block] = (uint32_t) (write_pos >> ciso.align);
+
+	if (deflateEnd(&z) != Z_OK)
+	{
+		printf("deflateEnd : %s\n", (z.msg) ? z.msg : "error");
+		return 1;
+	}
 
 	/* write header & index block */
 	if (fseeko(fout, (off_t) sizeof(ciso), SEEK_SET) != 0)
@@ -692,6 +717,7 @@ main(int argc, char *argv[])
 	if ((fout = fopen(fname_out, "wb")) == NULL)
 	{
 		fprintf(stderr, "Can't create %s\n", fname_out);
+		fclose(fin);
 		return 1;
 	}
 
