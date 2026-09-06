@@ -60,7 +60,6 @@ static void usage(FILE *, int);
 z_stream z;
 
 uint32_t *index_buf = NULL;
-uint32_t *crc_buf = NULL;
 unsigned char *block_buf1 = NULL;
 unsigned char *block_buf2 = NULL;
 
@@ -141,8 +140,6 @@ same_file_path(const char *path1, const char *path2)
 
 	if (stat(path2, &st2) != 0)
 	{
-		if (errno == ENOENT)
-			return 0;
 		return 0;
 	}
 
@@ -189,7 +186,7 @@ validate_cso_header(unsigned long long input_size)
 		return 1;
 	}
 
-	index_bytes = (unsigned long long) (ciso_total_block + 1) * sizeof(*index_buf);
+	index_bytes = (unsigned long long)(ciso_total_block + 1) * (unsigned long long)sizeof(*index_buf);
 	if (input_size < sizeof(ciso) + index_bytes)
 	{
 		fprintf(stderr, "file read error\n");
@@ -460,11 +457,10 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 
 	index_size = (ciso_total_block + 1) * sizeof(*index_buf);
 	index_buf  = calloc(1, index_size);
-	crc_buf    = calloc(1, index_size);
 	block_buf1 = calloc(1, ciso.block_size);
 	block_buf2 = calloc(2, ciso.block_size);
 
-	if (!index_buf || !crc_buf || !block_buf1 || !block_buf2)
+	if (!index_buf || !block_buf1 || !block_buf2)
 	{
 		fprintf(stderr, "Can't allocate memory\n");
 		return (1);
@@ -509,7 +505,7 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 
 	if (deflateInit2(&z, level, Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY) != Z_OK)
 	{
-		printf("deflateInit : %s\n", (z.msg) ? z.msg : "???");
+		fprintf(stderr, "deflateInit : %s\n", (z.msg) ? z.msg : "???");
 		return 1;
 	}
 
@@ -527,7 +523,7 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 		{
 			if (deflateReset(&z) != Z_OK)
 			{
-				printf("deflateReset : %s\n", (z.msg) ? z.msg : "???");
+				fprintf(stderr, "deflateReset : %s\n", (z.msg) ? z.msg : "???");
 				deflateEnd(&z);
 				return 1;
 			}
@@ -540,7 +536,7 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 			align = align_b - align;
 			if (fwrite(buf4, 1, align, fout) != align)
 			{
-				printf("block %zu : Write error\n",block);
+				fprintf(stderr, "block %zu : Write error\n", block);
 				deflateEnd(&z);
 				return 1;
 			}
@@ -564,7 +560,7 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 		
 		if (z.avail_in != ciso.block_size)
 		{
-			printf("block=%zu : read error\n",block);
+			fprintf(stderr, "block=%zu : read error\n", block);
 			deflateEnd(&z);
 			return 1;
 		}
@@ -572,7 +568,7 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 		status = deflate(&z, Z_FINISH);
 		if (status != Z_STREAM_END)
 		{
-			printf("block %zu:deflate : %s[%d]\n", block,(z.msg) ? z.msg : "error",status);
+			fprintf(stderr, "block %zu:deflate : %s[%d]\n", block, (z.msg) ? z.msg : "error", status);
 			deflateEnd(&z);
 			return 1;
 		}
@@ -591,7 +587,7 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 		/* write compressed block */
 		if (fwrite(block_buf2, 1, cmp_size , fout) != cmp_size)
 		{
-			printf("block %zu : Write error\n",block);
+			fprintf(stderr, "block %zu : Write error\n", block);
 			deflateEnd(&z);
 			return 1;
 		}
@@ -611,7 +607,7 @@ compress_iso_to_cso(FILE *fin, FILE *fout, int level)
 
 	if (deflateEnd(&z) != Z_OK)
 	{
-		printf("deflateEnd : %s\n", (z.msg) ? z.msg : "error");
+		fprintf(stderr, "deflateEnd : %s\n", (z.msg) ? z.msg : "error");
 		return 1;
 	}
 
@@ -637,10 +633,10 @@ static void
 usage(FILE *stream, int exit_code)
 {
 	fprintf(stream, "usage: ciso-maker [-c] [-x] -l level infile outfile\n");
-	fprintf(stream, "-c compresses\n");
-	fprintf(stream, "-x extracts e.g level 0\n");
-	fprintf(stream, "  level: 1-9 compress ISO to CSO (1=fast/large - 9=small/slow\n");
-	fprintf(stream, "         0   decompress CSO to ISO\n");
+	fprintf(stream, "-c compresses (default)\n");
+	fprintf(stream, "-x extracts\n");
+	fprintf(stream, "-l level: 1-9 compress ISO to CSO (1=fast/large - 9=small/slow)\n");
+	fprintf(stream, "              0   decompress CSO to ISO\n");
 	exit(exit_code);
 }
 
@@ -696,7 +692,7 @@ main(int argc, char *argv[])
 
 	if (level < 0 || level > 9)
 	{
-		fprintf(stderr, "Unknown mode: %c\n", level);
+		fprintf(stderr, "Unknown mode: %d\n", level);
 		usage(stderr, 1);
 		return 1;
 	}
@@ -733,7 +729,6 @@ main(int argc, char *argv[])
 	}
 
 	free(index_buf);
-	free(crc_buf);
 	free(block_buf1);
 	free(block_buf2);
 
